@@ -1,0 +1,160 @@
+version: '3.8'
+
+services:
+  # RabbitMQ - Message Broker
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - microservices
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  # Cadastro Cliente Service
+  cadastro-cliente:
+    build:
+      context: https://github.com/oliveiraDevTech/teste-cadastro.cliente.git#main
+      dockerfile: Dockerfile
+    container_name: cadastro-cliente
+    ports:
+      - "5000:5000"
+    environment:
+      # JWT Configuration
+      Jwt__Secret: "sua-chave-super-secreta-com-minimo-32-caracteres-aqui-xyz"
+      Jwt__Issuer: "CadastroClientesApi"
+      Jwt__Audience: "CadastroClientesApp"
+      Jwt__ExpirationMinutes: "120"
+
+      # Database Configuration
+      ConnectionStrings__DefaultConnection: "Data Source=/app/data/cliente.db;"
+
+      # RabbitMQ Configuration
+      RabbitMQ__HostName: "rabbitmq"
+      RabbitMQ__Port: "5672"
+      RabbitMQ__UserName: "guest"
+      RabbitMQ__Password: "guest"
+
+      # ASP.NET Core Configuration
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:5000"
+
+      # Email Service (Optional)
+      Email__SmtpServer: "smtp.gmail.com"
+      Email__Username: "seu-email@gmail.com"
+      Email__Password: "sua-senha-app"
+      Email__Port: "587"
+      Email__EnableSSL: "true"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - microservices
+    volumes:
+      - ./data/cliente:/app/data
+      - ./logs/cliente:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Validacao Credito Service
+  validacao-credito:
+    build:
+      context: https://github.com/oliveiraDevTech/teste-validacao.credito.git#main
+      dockerfile: Dockerfile
+    container_name: validacao-credito
+    ports:
+      - "5002:5002"
+    environment:
+      # JWT Configuration
+      Jwt__Secret: "sua-chave-super-secreta-com-minimo-32-caracteres-aqui-xyz"
+      Jwt__Issuer: "CadastroClientesApi"
+      Jwt__Audience: "CadastroClientesApp"
+      Jwt__ExpirationMinutes: "120"
+
+      # Database Configuration
+      ConnectionStrings__DefaultConnection: "Data Source=/app/data/credito.db;"
+
+      # RabbitMQ Configuration
+      RabbitMQ__HostName: "rabbitmq"
+      RabbitMQ__Port: "5672"
+      RabbitMQ__UserName: "guest"
+      RabbitMQ__Password: "guest"
+
+      # ASP.NET Core Configuration
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:5002"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - microservices
+    volumes:
+      - ./data/credito:/app/data
+      - ./logs/credito:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Emissao Cartao Service
+  emissao-cartao:
+    build:
+      context: https://github.com/oliveiraDevTech/teste-emissao.cartao.git#main
+      dockerfile: Dockerfile
+    container_name: emissao-cartao
+    ports:
+      - "7215:7215"
+    environment:
+      # JWT Configuration
+      JWT_SECRET: "sua-chave-super-secreta-com-minimo-32-caracteres-aqui-xyz"
+
+      # Database Configuration
+      DB_CONNECTION_STRING: "Data Source=/app/data/card_issuance.db;"
+
+      # RabbitMQ Configuration
+      RABBITMQ_HOST: "rabbitmq"
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: "guest"
+      RABBITMQ_PASSWORD: "guest"
+
+      # ASP.NET Core Configuration
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "https://+:7215"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - microservices
+    volumes:
+      - ./data/cartao:/app/data
+      - ./logs/cartao:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://localhost:7215/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  microservices:
+    driver: bridge
+
+volumes:
+  rabbitmq_data:
+    driver: local
