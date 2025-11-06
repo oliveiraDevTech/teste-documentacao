@@ -1,160 +1,338 @@
-version: '3.8'
-
 services:
-  # RabbitMQ - Message Broker
+  # RabbitMQ - Message Broker with queue initialization
   rabbitmq:
     image: rabbitmq:3.12-management
     container_name: rabbitmq
+    hostname: rabbitmq
     ports:
       - "5672:5672"   # AMQP port
       - "15672:15672" # Management UI
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
-    healthcheck:
-      test: rabbitmq-diagnostics -q ping
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    networks:
-      - microservices
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - microservices
+
+  # RabbitMQ Queue Initializer
+  rabbitmq-init:
+    image: curlimages/curl:latest
+    container_name: rabbitmq-init
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - microservices
+    command: >
+      sh -c '
+        echo "Aguardando RabbitMQ estar pronto..."
+        sleep 10
+        
+        echo "Criando filas no RabbitMQ..."
+        
+        # Fila: cliente.cadastrado (Cliente -> Validação Crédito)
+        curl -u guest:guest -X PUT "http://rabbitmq:15672/api/queues/%2F/cliente.cadastrado" \
+          -H "content-type: application/json" \
+          -d "{\"durable\":true,\"auto_delete\":false}"
+        
+        # Fila: analise.credito.complete (Validação Crédito -> Cliente)
+        curl -u guest:guest -X PUT "http://rabbitmq:15672/api/queues/%2F/analise.credito.complete" \
+          -H "content-type: application/json" \
+          -d "{\"durable\":true,\"auto_delete\":false}"
+        
+        # Fila: analise.credito.falha (Validação Crédito -> Cliente)
+        curl -u guest:guest -X PUT "http://rabbitmq:15672/api/queues/%2F/analise.credito.falha" \
+          -H "content-type: application/json" \
+          -d "{\"durable\":true,\"auto_delete\":false}"
+        
+        # Fila: cartao.emissao.pedido (Validação Crédito -> Emissão Cartão)
+        curl -u guest:guest -X PUT "http://rabbitmq:15672/api/queues/%2F/cartao.emissao.pedido" \
+          -H "content-type: application/json" \
+          -d "{\"durable\":true,\"auto_delete\":false}"
+        
+        # Fila: cartao.emitido (Emissão Cartão -> Cliente)
+        curl -u guest:guest -X PUT "http://rabbitmq:15672/api/queues/%2F/cartao.emitido" \
+          -H "content-type: application/json" \
+          -d "{\"durable\":true,\"auto_delete\":false}"
+        
+        # Fila: cartao.emissao.falha (Emissão Cartão -> Cliente)
+        curl -u guest:guest -X PUT "http://rabbitmq:15672/api/queues/%2F/cartao.emissao.falha" \
+          -H "content-type: application/json" \
+          -d "{\"durable\":true,\"auto_delete\":false}"
+        
+        echo "Filas criadas com sucesso!"
+        echo "Listando todas as filas:"
+        curl -u guest:guest "http://rabbitmq:15672/api/queues"
+      '
+    restart: "no"
 
   # Cadastro Cliente Service
   cadastro-cliente:
     build:
-      context: https://github.com/oliveiraDevTech/teste-cadastro.cliente.git#main
-      dockerfile: Dockerfile
+      context: ./dockerfiles
+      dockerfile: Dockerfile.cadastro-cliente
     container_name: cadastro-cliente
     ports:
       - "5000:5000"
     environment:
+      # Application Settings
+      ApplicationSettings__ServiceName: "CadastroClienteAPI"
+      ApplicationSettings__ServiceVersion: "1.0.0"
+      ApplicationSettings__Environment: "Production"
+
       # JWT Configuration
-      Jwt__Secret: "sua-chave-super-secreta-com-minimo-32-caracteres-aqui-xyz"
-      Jwt__Issuer: "CadastroClientesApi"
-      Jwt__Audience: "CadastroClientesApp"
-      Jwt__ExpirationMinutes: "120"
+      Security__Jwt__Secret: "sua-chave-super-secreta-com-minimo-32-caracteres-para-producao-segura-jwt-2024"
+      Security__Jwt__Issuer: "CadastroClientesApi"
+      Security__Jwt__Audience: "CadastroClientesApp"
+      Security__Jwt__ExpirationMinutes: "120"
+      Security__Jwt__RefreshTokenExpirationDays: "7"
 
       # Database Configuration
-      ConnectionStrings__DefaultConnection: "Data Source=/app/data/cliente.db;"
+      ConnectionStrings__DefaultConnection: "Data Source=/app/data/cadastro_clientes.db;"
 
       # RabbitMQ Configuration
       RabbitMQ__HostName: "rabbitmq"
       RabbitMQ__Port: "5672"
       RabbitMQ__UserName: "guest"
       RabbitMQ__Password: "guest"
+      RabbitMQ__VirtualHost: "/"
+      RabbitMQ__ConnectionTimeout: "10000"
+      RabbitMQ__RequestedHeartbeat: "30"
+      RabbitMQ__MaxRetries: "3"
+      RabbitMQ__RetryDelay: "1000"
+      RabbitMQ__AutomaticRecovery: "true"
+      RabbitMQ__DispatchConsumersAsync: "true"
+      
+      # RabbitMQ Queues
+      RabbitMQ__Queues__ClienteCadastrado: "cliente.cadastrado"
+      RabbitMQ__Queues__AnaliseCreditoComplete: "analise.credito.complete"
+      RabbitMQ__Queues__AnaliseCreditoFalha: "analise.credito.falha"
+      RabbitMQ__Queues__CartaoEmitido: "cartao.emitido"
+      RabbitMQ__Queues__CartaoEmissaoFalha: "cartao.emissao.falha"
 
       # ASP.NET Core Configuration
       ASPNETCORE_ENVIRONMENT: "Production"
       ASPNETCORE_URLS: "http://+:5000"
+      
+      # Logging
+      Logging__LogLevel__Default: "Information"
+      Logging__LogLevel__Microsoft: "Warning"
+      Logging__LogLevel__Microsoft.AspNetCore: "Warning"
 
-      # Email Service (Optional)
-      Email__SmtpServer: "smtp.gmail.com"
-      Email__Username: "seu-email@gmail.com"
-      Email__Password: "sua-senha-app"
-      Email__Port: "587"
-      Email__EnableSSL: "true"
+      # Email Configuration (opcional)
+      Email__Smtp__Enabled: "false"
+      Email__Smtp__Host: "smtp.gmail.com"
+      Email__Smtp__Port: "587"
+      Email__Smtp__UserName: "seu_email@gmail.com"
+      Email__Smtp__Password: "sua_senha_app"
+      Email__Smtp__FromEmail: "seu_email@gmail.com"
+      Email__Smtp__FromName: "Sistema de Cadastro de Clientes"
+      Email__Smtp__UseSsl: "true"
+
+      # Cache Configuration
+      Cache__Type: "Memory"
+      Cache__DefaultExpirationMinutes: "60"
+      Cache__SlidingExpirationMinutes: "30"
+
     depends_on:
-      rabbitmq:
-        condition: service_healthy
+      rabbitmq-init:
+        condition: service_completed_successfully
     networks:
       - microservices
     volumes:
-      - ./data/cliente:/app/data
-      - ./logs/cliente:/app/logs
+      - cadastro_data:/app/data
+      - cadastro_logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
 
   # Validacao Credito Service
   validacao-credito:
     build:
-      context: https://github.com/oliveiraDevTech/teste-validacao.credito.git#main
-      dockerfile: Dockerfile
+      context: ./dockerfiles
+      dockerfile: Dockerfile.validacao-credito
     container_name: validacao-credito
     ports:
       - "5002:5002"
     environment:
+      # Application Settings
+      ApplicationSettings__ServiceName: "ValidacaoCreditoAPI"
+      ApplicationSettings__ServiceVersion: "1.0.0"
+      ApplicationSettings__Environment: "Production"
+
       # JWT Configuration
-      Jwt__Secret: "sua-chave-super-secreta-com-minimo-32-caracteres-aqui-xyz"
-      Jwt__Issuer: "CadastroClientesApi"
-      Jwt__Audience: "CadastroClientesApp"
-      Jwt__ExpirationMinutes: "120"
+      Security__Jwt__Secret: "sua-chave-super-secreta-com-minimo-32-caracteres-para-producao-segura-jwt-2024"
+      Security__Jwt__Issuer: "CadastroClientesApi"
+      Security__Jwt__Audience: "CadastroClientesApp"
+      Security__Jwt__ExpirationMinutes: "120"
+      Security__Jwt__RefreshTokenExpirationDays: "7"
 
       # Database Configuration
-      ConnectionStrings__DefaultConnection: "Data Source=/app/data/credito.db;"
+      ConnectionStrings__DefaultConnection: "Data Source=/app/data/validacao_credito.db;"
 
       # RabbitMQ Configuration
       RabbitMQ__HostName: "rabbitmq"
       RabbitMQ__Port: "5672"
       RabbitMQ__UserName: "guest"
       RabbitMQ__Password: "guest"
+      RabbitMQ__VirtualHost: "/"
+      RabbitMQ__ConnectionTimeout: "10000"
+      RabbitMQ__RequestedHeartbeat: "30"
+      RabbitMQ__MaxRetries: "3"
+      RabbitMQ__RetryDelay: "1000"
+      RabbitMQ__AutomaticRecovery: "true"
+      RabbitMQ__DispatchConsumersAsync: "true"
+      
+      # RabbitMQ Queues
+      RabbitMQ__Queues__ClienteCadastrado: "cliente.cadastrado"
+      RabbitMQ__Queues__AnaliseCreditoComplete: "analise.credito.complete"
+      RabbitMQ__Queues__AnaliseCreditoFalha: "analise.credito.falha"
 
       # ASP.NET Core Configuration
       ASPNETCORE_ENVIRONMENT: "Production"
       ASPNETCORE_URLS: "http://+:5002"
+      
+      # Logging
+      Logging__LogLevel__Default: "Information"
+      Logging__LogLevel__Microsoft: "Warning"
+      Logging__LogLevel__Microsoft.AspNetCore: "Warning"
+
+      # Email Configuration (opcional)
+      Email__Smtp__Enabled: "false"
+
+      # Cache Configuration
+      Cache__Type: "Memory"
+      Cache__DefaultExpirationMinutes: "60"
+      Cache__SlidingExpirationMinutes: "30"
+
     depends_on:
-      rabbitmq:
+      rabbitmq-init:
+        condition: service_completed_successfully
+      cadastro-cliente:
         condition: service_healthy
     networks:
       - microservices
     volumes:
-      - ./data/credito:/app/data
-      - ./logs/credito:/app/logs
+      - credito_data:/app/data
+      - credito_logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
 
   # Emissao Cartao Service
   emissao-cartao:
     build:
-      context: https://github.com/oliveiraDevTech/teste-emissao.cartao.git#main
-      dockerfile: Dockerfile
+      context: ./dockerfiles
+      dockerfile: Dockerfile.emissao-cartao
     container_name: emissao-cartao
     ports:
-      - "7215:7215"
+      - "5001:5001"
     environment:
+      # Application Settings
+      ApplicationSettings__ServiceName: "EmissaoCartaoAPI"
+      ApplicationSettings__ServiceVersion: "1.0.0"
+      ApplicationSettings__Environment: "Production"
+
       # JWT Configuration
-      JWT_SECRET: "sua-chave-super-secreta-com-minimo-32-caracteres-aqui-xyz"
+      Security__Jwt__Secret: "sua-chave-super-secreta-com-minimo-32-caracteres-para-producao-segura-jwt-2024"
+      Security__Jwt__Issuer: "CadastroClientesApi"
+      Security__Jwt__Audience: "CadastroClientesApp"
+      Security__Jwt__ExpirationMinutes: "120"
+      Security__Jwt__RefreshTokenExpirationDays: "7"
 
       # Database Configuration
-      DB_CONNECTION_STRING: "Data Source=/app/data/card_issuance.db;"
+      ConnectionStrings__DefaultConnection: "Data Source=/app/data/emissao_cartao.db;"
 
       # RabbitMQ Configuration
-      RABBITMQ_HOST: "rabbitmq"
-      RABBITMQ_PORT: "5672"
-      RABBITMQ_USER: "guest"
-      RABBITMQ_PASSWORD: "guest"
+      RabbitMQ__HostName: "rabbitmq"
+      RabbitMQ__Port: "5672"
+      RabbitMQ__UserName: "guest"
+      RabbitMQ__Password: "guest"
+      RabbitMQ__VirtualHost: "/"
+      RabbitMQ__ConnectionTimeout: "10000"
+      RabbitMQ__RequestedHeartbeat: "30"
+      RabbitMQ__MaxRetries: "3"
+      RabbitMQ__RetryDelay: "1000"
+      RabbitMQ__AutomaticRecovery: "true"
+      RabbitMQ__DispatchConsumersAsync: "true"
+      
+      # RabbitMQ Queues
+      RabbitMQ__Queues__CartaoEmissaoPedido: "cartao.emissao.pedido"
+      RabbitMQ__Queues__CartaoEmitido: "cartao.emitido"
+      RabbitMQ__Queues__CartaoEmissaoFalha: "cartao.emissao.falha"
 
       # ASP.NET Core Configuration
       ASPNETCORE_ENVIRONMENT: "Production"
-      ASPNETCORE_URLS: "https://+:7215"
+      ASPNETCORE_URLS: "http://+:5001"
+      
+      # Logging
+      Logging__LogLevel__Default: "Information"
+      Logging__LogLevel__Microsoft: "Warning"
+      Logging__LogLevel__Microsoft.AspNetCore: "Warning"
+
+      # Cache Configuration
+      Cache__Type: "Memory"
+      Cache__DefaultExpirationMinutes: "60"
+      Cache__SlidingExpirationMinutes: "30"
+
     depends_on:
-      rabbitmq:
+      rabbitmq-init:
+        condition: service_completed_successfully
+      validacao-credito:
         condition: service_healthy
     networks:
       - microservices
     volumes:
-      - ./data/cartao:/app/data
-      - ./logs/cartao:/app/logs
+      - cartao_data:/app/data
+      - cartao_logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "https://localhost:7215/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
 
 networks:
   microservices:
     driver: bridge
+    name: microservices_network
 
 volumes:
   rabbitmq_data:
     driver: local
+    name: rabbitmq_data
+  cadastro_data:
+    driver: local
+    name: cadastro_data
+  credito_data:
+    driver: local
+    name: credito_data
+  cartao_data:
+    driver: local
+    name: cartao_data
+  cadastro_logs:
+    driver: local
+    name: cadastro_logs
+  credito_logs:
+    driver: local
+    name: credito_logs
+  cartao_logs:
+    driver: local
+    name: cartao_logs

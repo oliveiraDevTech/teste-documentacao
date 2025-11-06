@@ -15,21 +15,21 @@ graph TB
         A[📋 Cadastro de Clientes] --> B[⚖️ Validação de Crédito]
         B --> C[💳 Emissão de Cartão]
     end
-    
+
     subgraph "Infraestrutura Compartilhada"
         D[🐰 RabbitMQ<br/>Mensageria]
         E[🗄️ SQLite<br/>Banco de Dados]
         F[🔐 JWT<br/>Autenticação]
     end
-    
+
     A --> D
     B --> D
     C --> D
-    
+
     A --> E
     B --> E
     C --> E
-    
+
     A --> F
     B --> F
     C --> F
@@ -37,13 +37,56 @@ graph TB
 
 ---
 
+## 📊 Diagrama Detalhado
+
+### Versão Imagem (JPG)
+![Diagrama do Sistema](https://github.com/oliveiraDevTech/teste-documentacao/blob/main/Diagrama%204.drawio.jpg?raw=true)
+
+### Versão Interativa (HTML)
+<iframe src="https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/Diagrama%204.drawio.html" width="100%" height="600" frameborder="0" style="border: 1px solid #ccc; border-radius: 8px;"></iframe>
+
+---
+
+## 🔗 Repositórios dos Microserviços
+
+| Serviço | Repositório | Descrição |
+|---------|-------------|-----------|
+| 📋 **Cadastro de Clientes** | [teste-cadastro.cliente](https://github.com/oliveiraDevTech/teste-cadastro.cliente) | CRUD de clientes e autenticação JWT |
+| ⚖️ **Validação de Crédito** | [teste-validacao.credito](https://github.com/oliveiraDevTech/teste-validacao.credito) | Análise e aprovação de crédito |
+| 💳 **Emissão de Cartão** | [teste-emissao.cartao](https://github.com/oliveiraDevTech/teste-emissao.cartao) | Emissão e gestão de cartões de crédito |
+
+---
+
+## ⚡ Quick Start com Docker Compose
+
+### Download do Docker Compose
+
+Você pode baixar o arquivo `docker-compose.yml` diretamente:
+
+```bash
+# Opção 1: Clonar o repositório
+git clone https://github.com/oliveiraDevTech/teste-documentacao.git
+cd teste-documentacao
+
+# Opção 2: Baixar apenas o arquivo docker-compose.yml
+wget https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/docker-compose.yml
+wget https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/.env.example
+
+# Opção 3: Curl
+curl -O https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/.env.example
+```
+
+---
+
 ## 🏗️ Microserviços
 
-### 1. 📋 Cadastro de Clientes (`teste-cadastro.cliente`)
-**Porta:** `5001` | **Responsabilidade:** Gestão completa do ciclo de vida de clientes
+### 1. 📋 Cadastro de Clientes
+**Repositório:** [teste-cadastro.cliente](https://github.com/oliveiraDevTech/teste-cadastro.cliente)
+**Porta:** `5000` | **Responsabilidade:** Gestão completa do ciclo de vida de clientes
 
 - ✅ **CRUD de Clientes** - Criar, listar, atualizar e excluir clientes
-- ✅ **Validação de Dados** - CPF, email, telefone e endereço  
+- ✅ **Validação de Dados** - CPF, email, telefone e endereço
 - ✅ **Autenticação JWT** - Login seguro para acesso às APIs
 - ✅ **Auditoria** - Controle de criação, atualização e soft delete
 - ✅ **Score Inicial** - Definição de ranking e score de crédito básico
@@ -55,7 +98,10 @@ graph TB
 - `PUT /api/clientes/{id}` - Atualizar cliente
 - `DELETE /api/clientes/{id}` - Exclusão lógica
 
-### 2. ⚖️ Validação de Crédito (`teste-validacao.credito`)
+**Swagger:** http://localhost:5000/swagger
+
+### 2. ⚖️ Validação de Crédito
+**Repositório:** [teste-validacao.credito](https://github.com/oliveiraDevTech/teste-validacao.credito)
 **Porta:** `5002` | **Responsabilidade:** Análise e aprovação de crédito
 
 - ✅ **Análise de Crédito** - Algoritmos de scoring e aprovação
@@ -69,8 +115,11 @@ graph TB
 - `PUT /api/credito/{clienteId}/score` - Atualizar score manualmente
 - `GET /api/credito/{clienteId}/historico` - Histórico de análises
 
-### 3. 💳 Emissão de Cartão (`teste-emissao.cartao`)
-**Porta:** `5003` | **Responsabilidade:** Emissão e gestão de cartões de crédito
+**Swagger:** http://localhost:5002/swagger
+
+### 3. 💳 Emissão de Cartão
+**Repositório:** [teste-emissao.cartao](https://github.com/oliveiraDevTech/teste-emissao.cartao)
+**Porta:** `7215` | **Responsabilidade:** Emissão e gestão de cartões de crédito
 
 - ✅ **Emissão de Cartões** - Virtual e físico com validações de elegibilidade
 - ✅ **Ativação de Cartões** - Processo seguro de ativação
@@ -82,6 +131,8 @@ graph TB
 - `POST /api/cartoes/emitir` - Emitir novo cartão
 - `POST /api/cartoes/{id}/ativar` - Ativar cartão emitido
 - `GET /api/cartoes/cliente/{clienteId}` - Listar cartões do cliente
+
+**Swagger:** https://localhost:7215/swagger
 
 ---
 
@@ -184,6 +235,29 @@ sequenceDiagram
 
 ### Opção 1: Docker Compose (Recomendado)
 
+#### 📥 Download dos Arquivos Necessários
+
+**Links diretos para download:**
+- 🐳 [docker-compose.yml](https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/docker-compose.yml)
+- ⚙️ [.env.example](https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/.env.example)
+
+Ou use os comandos abaixo para fazer download automático:
+
+```bash
+# Criar diretório
+mkdir financial-system && cd financial-system
+
+# Baixar arquivos
+curl -O https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/.env.example
+curl -O https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/docker-helper.sh
+
+# Ou usando wget
+wget https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/docker-compose.yml
+wget https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/.env.example
+wget https://raw.githubusercontent.com/oliveiraDevTech/teste-documentacao/refs/heads/main/docker-helper.sh
+```
+
 #### 1. Configurar Variáveis de Ambiente
 ```bash
 # Copiar arquivo de exemplo
@@ -191,6 +265,9 @@ cp .env.example .env
 
 # Editar .env com suas credenciais JWT
 # JWT_SECRET=sua-chave-super-secreta-com-minimo-32-caracteres
+
+# Dar permissão ao script helper (Linux/Mac)
+chmod +x docker-helper.sh
 ```
 
 #### 2. Iniciar o Sistema
